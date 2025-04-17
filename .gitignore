@@ -1,0 +1,15 @@
+# Python cache dosyaları
+__pycache__/
+*.pyc
+
+# Ortam dosyası (API anahtarları gibi hassas bilgiler içerir)
+.env
+
+# Uygulama veritabanı (kullanıcı bilgileri, mesaj geçmişi vs.)
+chatbot.db
+
+# Yüklenen belgeler
+uploaded_files/
+
+# Chroma'nın vektör veritabanı
+chroma_db/
