@@ -1,4 +1,4 @@
-import os, uuid, hashlib, shutil
+import os, uuid, hashlib, shutil, time
 from datetime import datetime
 import streamlit as st
 
@@ -182,7 +182,9 @@ def _feedback_ui(idx, mid):
                 st.session_state.show_comment_form = False
                 st.session_state.feedback_message_id = None
                 st.toast("Teşekkürler!", icon="✅")
+                time.sleep(2)
                 st.rerun()
+
 
 # ───────────────────── DB Helpers ───────────────────────
 def save_chat_to_db(umsg, amsg):

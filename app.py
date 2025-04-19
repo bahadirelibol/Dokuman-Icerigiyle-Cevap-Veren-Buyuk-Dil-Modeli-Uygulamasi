@@ -23,7 +23,6 @@ def login_register_page():
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div class='container'>", unsafe_allow_html=True)
     st.markdown("<div class='title'>📄 Document Chat Assistant</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtitle'>Login or register to start chatting with your documents</div>",
