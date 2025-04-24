@@ -5,10 +5,10 @@ from database import init_db
 from auth import login, register
 from chat import chat_interface
 
-load_dotenv()          # .env anahtarları
+load_dotenv()          # .env dosyasındaki ayarları yükler.
 init_db()              # SQLite + tablolar
 
-# ─────────────────────────────────────────────────────────
+
 def login_register_page():
     st.markdown(
         """
@@ -22,8 +22,9 @@ def login_register_page():
         """,
         unsafe_allow_html=True,
     )
+    #unsafe_allow_html=True: Streamlit’in HTML kodlarını doğrudan sayfada çalıştırmasına izin veren bir parametredir.
 
-    st.markdown("<div class='title'>📄 Document Chat Assistant</div>", unsafe_allow_html=True)
+    st.markdown("<div class='title'>📄Document Chat Assistant - 📚TOGU</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='subtitle'>Login or register to start chatting with your documents</div>",
         unsafe_allow_html=True,
@@ -31,7 +32,8 @@ def login_register_page():
 
     tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
 
-    # --- Login ---
+    #use_container_width=True: Bu parametre, bir butonun veya bileşenin genişliğini bulunduğu konteynerin (örneğin bir column, sidebar, vs.) genişliğine tamamen yayılacak şekilde ayarlar.
+    # Login 
     with tab1:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -47,7 +49,7 @@ def login_register_page():
             else:
                 st.warning("Please fill in all fields")
 
-    # --- Register ---
+    # Register 
     with tab2:
         new_username = st.text_input("New Username")
         new_password = st.text_input("New Password", type="password")
@@ -66,7 +68,7 @@ def login_register_page():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────
+
 def main():
     st.set_page_config(
         page_title="Document Chat Assistant",
@@ -76,15 +78,21 @@ def main():
 
     if "user_id" not in st.session_state:
         st.session_state.user_id = None
+        #Kullanıcı oturumu başlatılmamışsa None olarak atanır.
 
     if st.session_state.user_id is None:
         login_register_page()
+        #Oturum yoksa giriş/kayıt ekranı gösterilir.
+        
     else:
         with st.sidebar:
             if st.button("Logout"):
                 st.session_state.clear()
                 st.rerun()
         chat_interface()
+        #Oturum varsa sohbet arayüzü (chat_interface) gösterilir. Yan menüde "Logout" ile çıkış yapılabilir.
+
+
 
 
 if __name__ == "__main__":

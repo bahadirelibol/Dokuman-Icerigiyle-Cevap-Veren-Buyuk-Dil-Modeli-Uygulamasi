@@ -1,6 +1,7 @@
 import os, uuid, hashlib, shutil, time
 from datetime import datetime
 import streamlit as st
+#uuid benzersiz ID üretme, hashlib veri hash’leme (şifre gibi), shutil	kopyalama & silme gibi dosya işlemleri.
 
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -9,14 +10,18 @@ from langchain_chroma import Chroma
 from langchain.chains import create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
+#Langchain: Belgeyi bölme, vektörleştirme, ve LLM ile etkileşim kurma için.
 
 from database import get_db, Chat, Message, Feedback, Document
+#Veritabanı işlemleri için modeller ve bağlantı fonksiyonu.
 
-# Kalıcı yükleme klasörü
+
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+#Belgelerin yükleneceği klasör. Yoksa oluşturur.
 
-# ───────────────────────── Chat Interface ──────────────────────────
+
+# --Chat Interface--
 def chat_interface():
     for k, v in [
         ("current_chat", None),
@@ -29,7 +34,23 @@ def chat_interface():
     ]:
         st.session_state.setdefault(k, v)
 
-    # ---------- Sidebar ----------
+
+        '''Anahtar (k)	        Açıklama
+        current_chat	        Kullanıcının şu anda açık olan sohbetin ID’si
+        messages	            Geçmiş sohbet mesajlarını tutan liste
+        editing_chat	        Kullanıcının başlığını düzenlediği sohbetin ID’si
+        show_comment_form	    Geri bildirim formu gösterilsin mi? (True/False)
+        feedback_message_id	    Geri bildirim verilecek mesajın ID’si
+        chat_retrievers	        Her sohbet için vektör tabanlı bilgi alma objesi (retriever)
+        processed_file_id	    İşlenmiş belgeyi tanımlamak için benzersiz anahtar (aynı dosya tekrar yüklenmesin diye)'''
+    #setdefault():
+    '''
+    Eğer k oturum değişkenlerinde yoksa, ona v değerini atar.
+    Eğer zaten varsa, hiçbir şey yapmaz.
+    Bu sayede, ilk çalıştırmada gerekli tüm oturum verileri sıfırdan ayarlanmış olur. Tek tek if ... not in session_state: yazmaya gerek kalmaz.'''
+
+
+    # --Sidebar--
     with st.sidebar:
         st.title("Chat History")
 
@@ -37,8 +58,11 @@ def chat_interface():
             _reset_chat_state()
 
         for chat in load_previous_chats(st.session_state.user_id):
+            #Kullanıcının daha önce yaptığı tüm sohbetleri veritabanından alır ve döngüyle listeler.
+
+            #Her sohbet satırı 3 parçaya ayrılır
             col1, col2, col3 = st.columns([3, 1, 1])
-            # Başlık / seç-düzenle
+            # Başlık / seç-düzenle / sil
             with col1:
                 if st.session_state.editing_chat == chat.id:
                     new_title = st.text_input("New title", value=chat.title, key=f"edit_{chat.id}")
@@ -58,10 +82,10 @@ def chat_interface():
                         _reset_chat_state()
                     st.rerun()
 
-    # ---------- Main ----------
+    # --Main--
     st.title("Chat with your document")
 
-    # ← dinamik widget key sayesinde yeni sohbette önceki dosya görünmez
+    #Dinamik widget key sayesinde yeni sohbette önceki dosya görünmez.Eğer bir sohbet açık ise o sohbetin ID’siyle bir key oluşturur
     uploader_key = f"uploader_{st.session_state.current_chat or 'new'}"
     file = st.file_uploader(
         "Upload a document (PDF, DOCX, or TXT)",
@@ -72,6 +96,7 @@ def chat_interface():
     if file:
         file_hash = hashlib.sha1(file.getvalue()).hexdigest()
         file_key  = f"{file.name}_{file.size}_{file_hash}"
+        #Dosyanın Eşsiz Anahtarını Üret -- Aynı dosya tekrar tekrar işlenmesin.
 
         already_done = (
             st.session_state.processed_file_id == file_key
@@ -81,26 +106,47 @@ def chat_interface():
         if not already_done:
             with st.spinner("Processing document..."):
                 docs = process_uploaded_file(file)
+                #Yüklenen belgeyi oku, içeriği parçala (chunk'lara böl).
                 if docs:
                     if not st.session_state.current_chat:
                         st.session_state.current_chat = _create_empty_chat()
+                        #Eğer henüz sohbet başlatılmadıysa, bir sohbet oluşturulur.
+
+                    #Vektör Veritabanı Kurulumu
                     retr = (
                         setup_vector_store(docs, st.session_state.current_chat)
                         .as_retriever(search_type="similarity", search_kwargs={"k": 10})
                     )
+                    #Belgelerden embedding (vektör) çıkarılır.
+                    #Chroma veritabanı oluşturulur.
+                    #Bu veritabanı "retriever" haline getirilir (LLM’in belgeye dayalı cevap verebilmesi için).
+
                     st.session_state.chat_retrievers[st.session_state.current_chat] = retr
                     st.session_state.processed_file_id = file_key
+                    #Bu sohbete ait retriever saklanır.
+                    #İşlenen dosyanın anahtarı oturuma kaydedilir.
                     st.success("Document processed successfully!")
 
-    # geçmiş mesajlar
+#retriever, belgeler arasından soruya en uygun bilgileri seçen yapıdır.
+#chunk = Belgenin küçük parçalara bölünmüş hali. Bir belgeyi doğrudan LLM'e veremezsin çünkü çok uzun olabilir.
+
+    # Geçmiş mesajlar
     for i, m in enumerate(st.session_state.messages):
+        #st.session_state.messages: Kullanıcının şu ana kadar gönderdiği ve aldığı tüm mesajları tutan bir liste.
+        #enumerate() → Hem mesajın içeriğini (m), hem de dizideki sırasını (i) verir.
         with st.chat_message(m["role"]):
+            #Her mesajı sohbet kutusunda gösterir.
             st.write(m["content"])
+            #Mesaj balonunun içine mesaj içeriğini (content) yazdırır.
             if m["role"] == "assistant" and "message_id" in m:
                 _feedback_ui(i, m["message_id"])
+                #i: Bu mesajın kaçıncı sırada olduğunu belirtir (butonlar için key olarak kullanılır).
+                #m["message_id"]: Bu mesaja ait veritabanı ID'si, geri bildirimle ilişkilendirmek için kullanılır.
 
-    # kullanıcı sorusu
+    # Kullanıcı sorusu
     if prompt := st.chat_input("What would you like to know?"):
+        #st.chat_input(...): Sayfanın altına bir sohbet kutusu yerleştirir.
+
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.write(prompt)
@@ -108,6 +154,7 @@ def chat_interface():
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 retr = st.session_state.chat_retrievers.get(st.session_state.current_chat)
+            #Şu anki sohbet ID’sine ait retriever varsa onu alır.Yani: Hangi belge yüklüyse, onun vektör verisini bul.
                 answer = (
                     _generate_answer(prompt, retr)
                     if retr
@@ -115,6 +162,8 @@ def chat_interface():
                 )
             st.write(answer)
             mid = save_chat_to_db(prompt, answer)
+            #Kullanıcının sorusu ve asistanın cevabı veritabanına kaydedilir.
+            #mid → Asistan mesajına ait veritabanı ID’si (geri bildirimde kullanılacak).
             st.session_state.messages.append(
                 {"role": "assistant", "content": answer, "message_id": mid}
             )
@@ -162,6 +211,9 @@ def _generate_answer(q, retr):
         [("system", sys_prompt), ("human", "Context: {context}\n\nQuestion: {input}")]
     )
     chain = create_retrieval_chain(retr, create_stuff_documents_chain(llm, prompt))
+    #LangChain zinciri kurulur
+    #Retriever → bağlamı bulur
+    #Prompt + LLM → cevabı üretir
     return chain.invoke({"input": q})["answer"]
 
 def _feedback_ui(idx, mid):
@@ -205,9 +257,11 @@ def save_feedback(mid, ok, comment=None):
     db = get_db()
     try:
         fb = db.query(Feedback).filter(Feedback.message_id == mid).first()
+        #Daha önce bu mesaja geri bildirim verildi mi kontrol
         if fb:
             fb.is_helpful = ok
             fb.comment = comment or fb.comment
+            #Eğer geri bildirim varsa güncellenir
         else:
             db.add(Feedback(message_id=mid, is_helpful=ok, comment=comment))
         db.commit()
@@ -218,7 +272,7 @@ def save_feedback(mid, ok, comment=None):
 def delete_chat(cid):
     db = get_db()
     try:
-        # SQL verileri sil
+        # SQL verileri silinir
         db.query(Message).filter(Message.chat_id == cid).delete()
         docs = db.query(Document).filter(Document.chat_id == cid).all()
         for d in docs:
@@ -278,12 +332,16 @@ def process_uploaded_file(file):
         st.error("Max 200 MB."); return None
 
     ext = os.path.splitext(file.name)[1].lower()
+    #Dosyanın uzantısı alınır (.pdf, .docx, .txt gibi)
     file_hash = hashlib.sha1(file.getvalue()).hexdigest()
+    #Dosyanın içeriğinden SHA1 hash üretilir → eşsiz kimlik
     permanent_path = os.path.join(UPLOAD_DIR, f"{file_hash}{ext}")
+    #Kalıcı dosya yolu oluşturulur
 
     if not os.path.exists(permanent_path):
         with open(permanent_path, "wb") as f:
             f.write(file.getvalue())
+            #Aynı dosya daha önce yüklenmediyse, diske yazılır.
 
     if st.session_state.current_chat:
         db = get_db()
@@ -291,11 +349,13 @@ def process_uploaded_file(file):
             if not db.query(Document).filter(
                 Document.chat_id == st.session_state.current_chat,
                 Document.file_path == permanent_path
+                #Aynı belge daha önce eklenmiş mi kontrol edilir.
             ).first():
                 db.add(Document(
                     chat_id=st.session_state.current_chat,
                     file_name=file.name,
                     file_path=permanent_path,
+                    #Eklenmemişse belge bilgisi veritabanına kaydedilir.
                 ))
                 db.commit()
         finally:
@@ -306,15 +366,24 @@ def process_uploaded_file(file):
         else Docx2txtLoader(permanent_path) if ext == ".docx"
         else TextLoader(permanent_path, encoding="utf-8") if ext == ".txt"
         else None
+        #Dosya uzantısına göre uygun Loader seç
     )
     if loader is None:
         st.error("Unsupported format"); return None
 
     docs = loader.load()
     return RecursiveCharacterTextSplitter(chunk_size=1000).split_documents(docs)
+    #Metin, 1000 karakterlik parçalara (chunk) bölünür ve döndürülür.
 
+
+#Bu fonksiyon, yukarıda parçalanmış belgelerden bir vektör veri tabanı (vector store) oluşturur.Retriever sistemi için hazırlanır.
 def setup_vector_store(docs, cid):
     directory = f"./chroma_db/chat_{cid}_{uuid.uuid4().hex[:8]}"
     os.makedirs(directory, exist_ok=True)
+    #Her sohbete özel klasör açılır (benzersiz UUID ile)
     emb = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    #Her chunk için embedding (vektör) üretmek üzere Gemini embedding modeli çağrılır.
     return Chroma.from_documents(docs, emb, persist_directory=directory)
+#Tüm belge parçaları embedding'e dönüştürülür.
+#Bu embedding’ler Chroma’ya kaydedilir.
+#Geriye bir Chroma nesnesi döner (retriever gibi kullanılacak).
