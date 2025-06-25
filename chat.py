@@ -198,7 +198,7 @@ def _create_empty_chat():
 
 def _generate_answer(q, retr):
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model="models/gemini-2.5-flash-preview-04-17",
         temperature=0.3,
         max_tokens=500,
         convert_system_message_to_human=True,
